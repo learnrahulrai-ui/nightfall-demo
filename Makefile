@@ -1,10 +1,9 @@
 # Nightfall DLP — build targets
 #
 #   make bpf             compile the eBPF LSM enforcer (clang -target bpf)
+#   make loader          build the userspace agent (libbpf: -lbpf -lelf -lz)
 #   make classify_test   build + run the userspace classifier unit tests
 #   make clean           remove build artifacts
-#
-# The loader target is added once the userspace agent lands.
 
 CC      ?= gcc
 CLANG   ?= clang
@@ -19,15 +18,22 @@ BPF_CFLAGS := -O2 -g -target bpf -D__TARGET_ARCH_$(ARCH) -I bpf
 
 BUILD := build
 
-.PHONY: all clean bpf classify_test
+.PHONY: all clean bpf loader classify_test
 
-all: bpf classify_test
+all: bpf loader classify_test
 
 # --- kernel: eBPF LSM enforcer object ---------------------------------------
 $(BPF_OBJ): $(BPF_SRC) bpf/vmlinux.h
 	$(CLANG) $(BPF_CFLAGS) -c $< -o $@
 
 bpf: $(BPF_OBJ)
+
+# --- userspace: libbpf loader/agent -----------------------------------------
+$(BUILD)/loader: src/loader.c src/classify.c src/classify.h
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) -Isrc -o $@ src/loader.c src/classify.c -lbpf -lelf -lz
+
+loader: $(BUILD)/loader
 
 # --- userspace: content classifier unit tests -------------------------------
 $(BUILD)/classify_test: test/classify_test.c src/classify.c src/classify.h
