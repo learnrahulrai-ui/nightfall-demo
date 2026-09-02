@@ -31,6 +31,9 @@ char LICENSE[] SEC("license") = "GPL";
 /* vmlinux.h supplies types, not macros like EPERM. */
 #define EPERM 1
 
+/* Set when clone() creates a new thread in the same thread group (vs a new process). */
+#define CLONE_THREAD 0x00010000
+
 /* Kernel 32-bit dev_t: low 20 bits minor, high 12 bits major (20 + 12 = 32). */
 #define MINORBITS 20
 #define MINORMASK ((1U << MINORBITS) - 1)
@@ -129,7 +132,10 @@ int BPF_PROG(dlp_connect, struct socket *sock, struct sockaddr *address, int add
         return 0;
 
     struct task_struct *task = bpf_get_current_task_btf();
-    struct taint_val *t = bpf_task_storage_get(&nightfall_payload, task, 0, 0);
+    /* Per-PROCESS taint: key on the thread-group leader so every thread of the
+     * process shares one taint — including threads that existed before the read. */
+    struct task_struct *leader = task->group_leader;
+    struct taint_val *t = bpf_task_storage_get(&nightfall_payload, leader, 0, 0);
 
     if (!t)
         return 0;
@@ -190,9 +196,11 @@ int BPF_PROG(dlp_open, struct file *file, int ret)
     __u8 level = *is_protected;
 
     struct task_struct *task = bpf_get_current_task_btf();
+    /* Taint the PROCESS (group leader), not just this thread. */
+    struct task_struct *leader = task->group_leader;
 
     /* F_CREATE: the payload does not exist until the first protected open. */
-    struct taint_val *t = bpf_task_storage_get(&nightfall_payload, task, 0, BPF_LOCAL_STORAGE_GET_F_CREATE);
+    struct taint_val *t = bpf_task_storage_get(&nightfall_payload, leader, 0, BPF_LOCAL_STORAGE_GET_F_CREATE);
     if (t)
     {
         bpf_d_path(&file->f_path, t->file_path_inside_task, sizeof(t->file_path_inside_task));
@@ -219,12 +227,20 @@ int BPF_PROG(dlp_task_alloc, struct task_struct *task, unsigned long clone_flags
         return ret;
 
     struct task_struct *nightfall_parent = bpf_get_current_task_btf();
-    struct taint_val *parent_taint = bpf_task_storage_get(&nightfall_payload, nightfall_parent, 0, 0);
+    /* Read the parent's taint from its group leader (per-process key). */
+    struct task_struct *parent_leader = nightfall_parent->group_leader;
+    struct taint_val *parent_taint = bpf_task_storage_get(&nightfall_payload, parent_leader, 0, 0);
 
     if (!parent_taint)
         return 0; /* clean parent -> clean child */
 
-    /* F_CREATE: the child is brand new and has no payload yet. */
+    /* CLONE_THREAD: the new thread shares the parent's group leader, whose taint
+     * already covers it via the per-process key — nothing to copy. */
+    if (clone_flags & CLONE_THREAD)
+        return 0;
+
+    /* A new PROCESS becomes its own group leader once it runs, so store the taint
+     * on the child task directly (child->group_leader is not wired up yet here). */
     struct taint_val *child_taint = bpf_task_storage_get(&nightfall_payload, task, 0, BPF_LOCAL_STORAGE_GET_F_CREATE);
 
     if (child_taint)
@@ -233,10 +249,6 @@ int BPF_PROG(dlp_task_alloc, struct task_struct *task, unsigned long clone_flags
                                   sizeof(child_taint->file_path_inside_task),
                                   parent_taint->file_path_inside_task);
         child_taint->level = parent_taint->level;
-    }
-    else
-    {
-        return 0;
     }
 
     return 0;
@@ -257,8 +269,10 @@ int BPF_PROG(dlp_sendmsg, struct socket *sock, struct msghdr *msg, int size)
         return 0;
 
     struct task_struct *task = bpf_get_current_task_btf();
+    /* Per-PROCESS taint: check the thread-group leader. */
+    struct task_struct *leader = task->group_leader;
 
-    struct taint_val *t = bpf_task_storage_get(&nightfall_payload, task, 0, 0);
+    struct taint_val *t = bpf_task_storage_get(&nightfall_payload, leader, 0, 0);
     if (!t)
     {
         return 0;
