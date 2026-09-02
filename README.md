@@ -56,8 +56,15 @@ src/classify.c    content classifier (SSN / PAN+Luhn / AWS)
 src/classify.h
 test/classify_test.c   unit tests for all four levels
 test/demo.sh           90-second scripted live demo
+clipboard/clipboard_watch.c   userspace DLP source #3: X11 clipboard watcher
 LIMITS.md              honest failure modes
 ```
+
+The kernel hooks cover the file and socket exfil channels; the clipboard is a
+third channel that lives entirely in the X server, so
+`clipboard/clipboard_watch.c` is a userspace sensor (XFixes selection-owner
+notifications). It detects clipboard changes today; pulling and classifying the
+pasted bytes is called out as future work in LIMITS.md.
 
 ## Build
 
@@ -66,6 +73,7 @@ make            # builds bpf/dlp.bpf.o (clang -target bpf) + build/loader + clas
 make bpf        # just the eBPF object
 make loader     # just the userspace agent  (gcc, -lbpf -lelf -lz)
 make classify_test   # build + run the classifier unit tests
+make clipboard       # optional: X11 clipboard watcher (-lX11 -lXfixes)
 make clean
 ```
 

@@ -2,6 +2,7 @@
 #
 #   make bpf             compile the eBPF LSM enforcer (clang -target bpf)
 #   make loader          build the userspace agent (libbpf: -lbpf -lelf -lz)
+#   make clipboard       build the X11 clipboard watcher (-lX11 -lXfixes)
 #   make classify_test   build + run the userspace classifier unit tests
 #   make clean           remove build artifacts
 
@@ -34,6 +35,13 @@ $(BUILD)/loader: src/loader.c src/classify.c src/classify.h
 	$(CC) $(CFLAGS) -Isrc -o $@ src/loader.c src/classify.c -lbpf -lelf -lz
 
 loader: $(BUILD)/loader
+
+# --- userspace: X11 clipboard watcher (DLP source #3) -----------------------
+$(BUILD)/clipboard_watch: clipboard/clipboard_watch.c
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) -o $@ clipboard/clipboard_watch.c -lX11 -lXfixes
+
+clipboard: $(BUILD)/clipboard_watch
 
 # --- userspace: content classifier unit tests -------------------------------
 $(BUILD)/classify_test: test/classify_test.c src/classify.c src/classify.h
