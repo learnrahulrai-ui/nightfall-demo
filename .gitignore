@@ -7,3 +7,9 @@ build/
 *~
 .DS_Store
 NOTES/
+*.so
+agent/agent
+agent/dlp_agent
+file/file_watch
+file/fanotify_gate
+identity/identity
