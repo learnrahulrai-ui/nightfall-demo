@@ -54,8 +54,6 @@
 
 /* --------------------------------------------- was common/dlp_event.h ----- */
 
-#define DLP_BYTES 4096
-
 enum { DLP_CLIPBOARD = 1, DLP_FILE = 2, DLP_NETWORK = 3 };
 enum { DLP_ALLOW = 0, DLP_AUDIT = 1, DLP_DENY = 2 };
 
@@ -63,7 +61,7 @@ struct dlp_event {
   int source;
   int pid;
   int uid;
-  char bytes[DLP_BYTES];
+  char bytes[4096];
   int byte_count;
   int level;
   int action;
@@ -172,7 +170,7 @@ static int register_secret(int map_fd, const char *path) {
   int fd = open(path, O_RDONLY);
   if (fd < 0)
     return 0;
-  char buf[DLP_BYTES];
+  char buf[4096];
   ssize_t nr = read(fd, buf, sizeof(buf));
   close(fd);
   if (nr <= 0)
@@ -468,17 +466,21 @@ int main(void) {
             int format;
             unsigned long nitems, bytes_after;
             unsigned char *data = NULL;
-            XGetWindowProperty(display, win, data_property, 0, DLP_BYTES / 4,
+            XGetWindowProperty(display, win, data_property, 0, 4096 / 4,
                                True, AnyPropertyType, &type, &format, &nitems,
                                &bytes_after, &data);
             if (data) {
-              /* classify + policy + print inlined */
-              int clevel = classify((const char *)data, (int)nitems);
-              int caction = (clevel == 0) ? 0 : (clevel >= 2) ? 2 : 1;
-              printf("source=%d pid=%d uid=%d bytes=%lu level=%d action=%d\n",
-                     DLP_CLIPBOARD, 0, 0, nitems, clevel, caction);
-              fflush(stdout);
-              XFree(data);
+              if (bytes_after > 0) {
+                printf("clip TRUNCATED read=%lu unread=%lu level=UNKNOWN\n", nitems, bytes_after);
+                fflush(stdout);
+                XFree(data);
+              } else {
+                int clevel = classify((const char *)data, (int)nitems);
+                printf("source=1 pid=0 uid=0 bytes=%lu level=%d action=%d\n",
+                       nitems, clevel, clevel == 0 ? 0 : clevel >= 2 ? 2 : 1);
+                fflush(stdout);
+                XFree(data);
+              }
             }
           }
         }
@@ -498,12 +500,12 @@ int main(void) {
             snprintf(path, sizeof(path), INOTIFY_DIR "/%s", iev->name);
             int f = open(path, O_RDONLY);
             if (f >= 0) {
-              char bytes[DLP_BYTES];
+              char bytes[4096];
               int rn = read(f, bytes, sizeof(bytes));
               close(f);
               int bc = rn > 0 ? rn : 0;
-              if (bc > DLP_BYTES)
-                bc = DLP_BYTES;
+              if (bc > 4096)
+                bc = 4096;
               /* classify + policy + print inlined */
               int clevel = classify(bytes, bc);
               int caction = (clevel == 0) ? 0 : (clevel >= 2) ? 2 : 1;
@@ -607,7 +609,7 @@ int main(void) {
               }
               close(meta->fd);
             } else {
-              char bytes[DLP_BYTES];
+              char bytes[4096];
               lseek(meta->fd, 0, SEEK_SET);
               int rn = read(meta->fd, bytes, sizeof(bytes));
               int bc = rn > 0 ? rn : 0;
