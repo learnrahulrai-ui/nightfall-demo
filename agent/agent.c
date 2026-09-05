@@ -470,7 +470,11 @@ int main(void) {
                                True, AnyPropertyType, &type, &format, &nitems,
                                &bytes_after, &data);
             if (data) {
-              if (bytes_after > 0) {
+              if (type != utf8) {
+                printf("clip non-text bytes=%lu\n", nitems);
+                fflush(stdout);
+                XFree(data);
+              } else if (bytes_after > 0) {
                 printf("clip TRUNCATED read=%lu unread=%lu level=UNKNOWN\n", nitems, bytes_after);
                 fflush(stdout);
                 XFree(data);
